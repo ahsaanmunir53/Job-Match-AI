@@ -1,0 +1,182 @@
+[
+ {
+  "id": "s1",
+  "title": "Senior Platform Engineer (Kubernetes)",
+  "company": "Northwind Cloud",
+  "location": "Remote - EU",
+  "remote": true,
+  "tags": [
+   "kubernetes",
+   "terraform",
+   "aws"
+  ],
+  "url": "https://example.com/jobs/1",
+  "source": "Sample",
+  "description": "We run multi-tenant workloads on Kubernetes (EKS). You will own cluster lifecycle, Terraform modules, Helm charts and GitLab CI/CD pipelines. Strong Linux and Bash. Prometheus and Grafana for monitoring, defining SLOs and leading incident response. Python scripting for internal tooling. AWS IAM and ECR.",
+  "posted": "2026-08-04T05:49:59.375615+00:00"
+ },
+ {
+  "id": "s2",
+  "title": "Machine Learning Engineer - LLM Systems",
+  "company": "Vector Labs",
+  "location": "Remote",
+  "remote": true,
+  "tags": [
+   "llm",
+   "rag",
+   "python"
+  ],
+  "url": "https://example.com/jobs/2",
+  "source": "Sample",
+  "description": "Build retrieval augmented generation pipelines. Embeddings, vector databases, prompt engineering with OpenAI and Anthropic models. Python, FastAPI. Model serving, evaluation and MLOps practices. Docker and AWS Bedrock experience valued.",
+  "posted": "2026-08-02T05:49:59.375615+00:00"
+ },
+ {
+  "id": "s3",
+  "title": "Site Reliability Engineer",
+  "company": "Ledgerpoint",
+  "location": "Remote - Worldwide",
+  "remote": true,
+  "tags": [
+   "sre",
+   "observability"
+  ],
+  "url": "https://example.com/jobs/3",
+  "source": "Sample",
+  "description": "SRE role owning availability for a payments platform. SLOs, error budgets, incident command. Kubernetes, Docker, Terraform, AWS. Observability with Prometheus, Grafana and Datadog. Python or Go for automation. PostgreSQL and Redis.",
+  "posted": "2026-07-30T05:49:59.375615+00:00"
+ },
+ {
+  "id": "s4",
+  "title": "Full Stack Engineer (Python / React)",
+  "company": "Bright Harbour",
+  "location": "Remote - Europe",
+  "remote": true,
+  "tags": [
+   "python",
+   "react"
+  ],
+  "url": "https://example.com/jobs/4",
+  "source": "Sample",
+  "description": "Django and FastAPI services with a React and TypeScript frontend. PostgreSQL, Redis, Docker, CI/CD on GitHub Actions. REST API design, unit testing with pytest and Jest. Agile team, code review culture.",
+  "posted": "2026-07-27T05:49:59.375615+00:00"
+ },
+ {
+  "id": "s5",
+  "title": "DevOps Engineer (AWS)",
+  "company": "Cirrus Systems",
+  "location": "Remote",
+  "remote": true,
+  "tags": [
+   "aws",
+   "devops"
+  ],
+  "url": "https://example.com/jobs/5",
+  "source": "Sample",
+  "description": "Own AWS infrastructure as code with Terraform. Kubernetes on EKS, Helm, Docker. Build CI/CD pipelines with GitLab CI. Linux administration, Bash, Python. Security focus on IAM and OAuth. Monitoring and alerting.",
+  "posted": "2026-07-21T05:49:59.375615+00:00"
+ },
+ {
+  "id": "s6",
+  "title": "Frontend Developer (React / Next.js)",
+  "company": "Pixelworks",
+  "location": "Remote - Americas",
+  "remote": true,
+  "tags": [
+   "react",
+   "frontend"
+  ],
+  "url": "https://example.com/jobs/6",
+  "source": "Sample",
+  "description": "Build marketing and product surfaces in React and Next.js with TypeScript and Tailwind. Responsive design, accessibility, Jest testing. Figma to code workflow. GraphQL data layer.",
+  "posted": "2026-07-16T05:49:59.375615+00:00"
+ },
+ {
+  "id": "s7",
+  "title": "Data Engineer",
+  "company": "Meridian Analytics",
+  "location": "Remote - EU",
+  "remote": true,
+  "tags": [
+   "data",
+   "etl"
+  ],
+  "url": "https://example.com/jobs/7",
+  "source": "Sample",
+  "description": "Build ETL and data pipelines with Airflow and Spark. Python, pandas, SQL and PostgreSQL. Kafka event streaming. Docker and AWS. Data quality and testing practices.",
+  "posted": "2026-07-08T05:49:59.375615+00:00"
+ },
+ {
+  "id": "s8",
+  "title": "Backend Engineer (Ruby on Rails)",
+  "company": "Fernway",
+  "location": "Remote",
+  "remote": true,
+  "tags": [
+   "ruby",
+   "rails"
+  ],
+  "url": "https://example.com/jobs/8",
+  "source": "Sample",
+  "description": "Ruby on Rails monolith moving toward microservices. PostgreSQL, Redis, Sidekiq. REST API design, RSpec testing. Docker, CI/CD, AWS deployment. Agile delivery.",
+  "posted": "2026-07-01T05:49:59.375615+00:00"
+ },
+ {
+  "id": "s9",
+  "title": "MLOps Engineer",
+  "company": "Solaris AI",
+  "location": "Remote - Worldwide",
+  "remote": true,
+  "tags": [
+   "mlops",
+   "kubernetes"
+  ],
+  "url": "https://example.com/jobs/9",
+  "source": "Sample",
+  "description": "Own model serving and deployment infrastructure. Kubernetes, Docker, Terraform on AWS. Python, model monitoring and drift detection, CI/CD for ML. Experience with TensorFlow or PyTorch model packaging.",
+  "posted": "2026-06-16T05:49:59.375615+00:00"
+ },
+ {
+  "id": "s10",
+  "title": "Salesforce Administrator",
+  "company": "Corevia CRM",
+  "location": "Hybrid - Lahore",
+  "remote": false,
+  "tags": [
+   "salesforce"
+  ],
+  "url": "https://example.com/jobs/10",
+  "source": "Sample",
+  "description": "Administer Salesforce org, build reports and dashboards, manage users and permissions. Apex triggers and Lightning Web Components a plus. Stakeholder training and documentation.",
+  "posted": "2026-05-27T05:49:59.375615+00:00"
+ },
+ {
+  "id": "s11",
+  "title": "Cloud Security Engineer",
+  "company": "Bastion Cloud",
+  "location": "Remote - EU",
+  "remote": true,
+  "tags": [
+   "security",
+   "aws"
+  ],
+  "url": "https://example.com/jobs/11",
+  "source": "Sample",
+  "description": "Harden AWS environments. IAM policy design, OIDC federation, least privilege. Kubernetes security, container scanning, penetration testing. Terraform, Python automation. Incident response.",
+  "posted": "2026-05-07T05:49:59.375615+00:00"
+ },
+ {
+  "id": "s12",
+  "title": "Technical Writer (Developer Docs)",
+  "company": "Inkwell",
+  "location": "Remote",
+  "remote": true,
+  "tags": [
+   "docs"
+  ],
+  "url": "https://example.com/jobs/12",
+  "source": "Sample",
+  "description": "Write and maintain API reference and tutorials for a developer platform. Comfortable reading code in Python and JavaScript. Git based docs workflow. Working with engineers to clarify behaviour.",
+  "posted": null
+ }
+]

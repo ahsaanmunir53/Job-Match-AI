@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>JobMatch AI — Pakistan-first job radar</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+<div class="wrap">
+
+  <header class="top">
+    <div class="brand">
+      <h1>JobMatch <span class="ai">AI</span></h1>
+      <p class="tagline">Pakistan-first job radar — live company boards, remote feeds, and a searchable employer directory.</p>
+    </div>
+    <div class="top-meta">
+      <span><b id="metaBoards">–</b> live boards</span><span class="dot">·</span>
+      <span><b id="metaAggs">–</b> job feeds</span><span class="dot">·</span>
+      <span><b id="metaDir">–</b> PK companies</span>
+      <button class="btn-ghost" id="verifyBtn" type="button">Check sources</button>
+    </div>
+  </header>
+
+  <div class="grid">
+
+    <!-- ============ Resume ============ -->
+    <section class="card" aria-labelledby="resumeLabel">
+      <p class="eyebrow" id="resumeLabel">Your resume
+        <span class="stat" id="resumeStat" hidden></span>
+      </p>
+
+      <div class="mode-row">
+        <button class="btn-solid" id="modeUpload" type="button">Upload file</button>
+        <button class="btn-ghost" id="modePaste" type="button">Paste text</button>
+      </div>
+
+      <div class="drop" id="drop" role="button" tabindex="0"
+           aria-label="Drop your resume here or press to browse">
+        <div class="up" aria-hidden="true">&#8593;</div>
+        <div>Drop your resume here, or <span class="btn-link">browse</span></div>
+        <div class="sub">PDF, DOCX or TXT · up to 5&nbsp;MB</div>
+      </div>
+      <input type="file" id="fileInput" accept=".pdf,.docx,.txt" hidden>
+
+      <div class="loaded" id="loaded" hidden>
+        <span class="name" id="loadedName"></span>
+        <span class="meta" id="loadedMeta"></span>
+        <button class="btn-ghost" id="editBtn" type="button">Review or edit text</button>
+      </div>
+
+      <div class="editor" id="editor">
+        <textarea id="resumeText" spellcheck="false"
+          placeholder="Paste your resume text here — plain text works perfectly."></textarea>
+        <div class="actions">
+          <button class="btn-solid" id="useTextBtn" type="button">Use this text</button>
+          <button class="btn-ghost" id="closeEditorBtn" type="button">Close</button>
+        </div>
+      </div>
+
+      <div class="skills" id="skills" aria-live="polite"></div>
+    </section>
+
+    <!-- ============ Filters ============ -->
+    <section class="card" aria-labelledby="filtersLabel">
+      <p class="eyebrow" id="filtersLabel">Role or keywords <span class="hint">filters before scoring</span></p>
+
+      <div class="field">
+        <input type="text" id="keywords" placeholder="e.g. platform engineer, python, devops" autocomplete="off">
+        <div class="note">Narrows the pool by title, company or tags. Comma-separate alternatives. Leave empty to score every job.</div>
+      </div>
+
+      <div class="field">
+        <p class="eyebrow">Scope</p>
+        <div class="seg" id="scopeSeg" role="group" aria-label="Search scope">
+          <button type="button" data-v="pakistan" class="on">Pakistan</button>
+          <button type="button" data-v="worldwide">Worldwide</button>
+        </div>
+        <div class="note">Pakistan scope keeps PK-linked companies plus remote jobs open to applicants here.</div>
+      </div>
+
+      <div class="field">
+        <p class="eyebrow">City <span class="hint">optional</span></p>
+        <input type="text" id="city" placeholder="e.g. Lahore" autocomplete="off">
+      </div>
+
+      <div class="field">
+        <p class="eyebrow">Work type</p>
+        <div class="seg" id="workSeg" role="group" aria-label="Work type">
+          <button type="button" data-v="any" class="on">Any</button>
+          <button type="button" data-v="remote">Remote</button>
+          <button type="button" data-v="hybrid">Hybrid</button>
+          <button type="button" data-v="onsite">On-site</button>
+        </div>
+      </div>
+
+      <div class="field">
+        <p class="eyebrow">Posted within</p>
+        <div class="seg" id="postedSeg" role="group" aria-label="Posted within">
+          <button type="button" data-v="7">Week</button>
+          <button type="button" data-v="21">3 weeks</button>
+          <button type="button" data-v="42" class="on">6 weeks</button>
+          <button type="button" data-v="">Any</button>
+        </div>
+      </div>
+
+      <div class="field">
+        <p class="eyebrow">Minimum match <span class="stat" id="minMatchVal">any</span></p>
+        <input type="range" id="minMatch" min="0" max="90" step="5" value="0">
+      </div>
+
+      <button class="btn-primary" id="searchBtn" type="button">Find matching jobs</button>
+
+      <div class="quick">
+        <p class="eyebrow">Search the big boards <span class="hint">opens with your keywords</span></p>
+        <div class="row" id="quickLinks"></div>
+        <p class="note">These open in a new tab rather than loading here. LinkedIn,
+          Indeed, Rozee, Mustakbil, Bayt and Glassdoor don't allow third-party
+          apps to pull their listings — no open API, and scraping breaks their
+          terms. <button class="btn-link" id="whyLinksBtn" type="button">See what
+          you can connect instead</button></p>
+      </div>
+    </section>
+  </div>
+
+  <!-- ============ Tabs ============ -->
+  <nav class="tabs" aria-label="Results sections">
+    <button id="tabMatches" class="on" type="button">Matches <span class="count" id="matchCount"></span></button>
+    <button id="tabDirectory" type="button">Company directory <span class="count" id="dirCount"></span></button>
+    <button id="tabFeeds" type="button">Job feeds <span class="count" id="feedCount"></span></button>
+  </nav>
+
+  <!-- ============ Matches panel ============ -->
+  <section id="panelMatches">
+    <div class="board" id="board">
+      <div class="head">
+        <span class="title" id="boardTitle">Contacting sources…</span>
+        <span class="nums"><b id="boardDone">0</b>/<span id="boardTotal">0</span> sources · <b id="boardJobs">0</b> jobs collected</span>
+      </div>
+      <div class="progress"><i id="progressBar"></i></div>
+      <div class="signal" id="signal" aria-live="polite"></div>
+    </div>
+
+    <div class="results-head" id="resultsHead" hidden>
+      <span class="n"><b id="resultsN">0</b> jobs after filters — sorted by match</span>
+    </div>
+    <div id="results"></div>
+
+    <div class="empty" id="emptyState">
+      <b>Ready when you are.</b><br>
+      Load a resume, set your filters, and press “Find matching jobs”.
+      Sources report in live — anything that fails shows exactly why instead of blocking the rest.
+    </div>
+  </section>
+
+  <!-- ============ Directory panel ============ -->
+  <section id="panelDirectory" hidden>
+    <div class="dir-controls">
+      <input type="search" id="dirSearch" placeholder="Search companies, e.g. fintech, Careem, Lahore…" autocomplete="off">
+      <select id="dirSector" aria-label="Filter by sector"><option value="">All sectors</option></select>
+      <select id="dirCity" aria-label="Filter by city"><option value="">All cities</option></select>
+    </div>
+    <div id="dirRows"></div>
+    <p class="dir-foot" id="dirFoot"></p>
+  </section>
+
+  <!-- ============ Job feeds panel ============ -->
+  <section id="panelFeeds" hidden>
+    <div class="card feed-card">
+      <p class="eyebrow">Running now <span class="hint">no setup needed</span></p>
+      <p class="feed-lede">Company hiring systems and open remote feeds. These
+        publish their listings openly, so the app reads them directly.</p>
+      <div id="feedsOn"></div>
+    </div>
+
+    <div class="card feed-card">
+      <p class="eyebrow">Add a key, get more jobs <span class="stat" id="feedActiveStat"></span></p>
+      <p class="feed-lede">Each of these hands out a free key. Put it in
+        <code>data/api_keys.json</code> (copy <code>api_keys.example.json</code>
+        and rename it), restart the server, and the source turns on by itself.
+        Start with JSearch — it reaches the listings the closed sites won't share.</p>
+      <div id="feedsKeyed"></div>
+    </div>
+
+    <div class="card feed-card">
+      <p class="eyebrow">Link-only <span class="hint">automation not permitted</span></p>
+      <p class="feed-lede">These sites don't offer public job APIs to third-party
+        apps, and pulling their pages automatically would break their terms of
+        service and get the app blocked. So JobMatch sends you into their own
+        search with your keywords already filled in — allowed, and it won't
+        silently break the way a scraper would.</p>
+      <div id="feedsBlocked"></div>
+    </div>
+  </section>
+
+</div>
+
+<div class="toast" id="toast" role="status"></div>
+<script src="/static/app.js"></script>
+</body>
+</html>

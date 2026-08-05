@@ -1,0 +1,27 @@
+services:
+  - type: web
+    name: jobmatch-ai
+    runtime: python
+    plan: free
+    region: singapore          # closest Render region to Pakistan
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /api/health
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.12.7"
+      # Set these in the Render dashboard under Environment — never commit them.
+      - key: RAPIDAPI_KEY
+        sync: false
+      - key: CAREERJET_AFFID
+        sync: false
+      - key: JOOBLE_API_KEY
+        sync: false
+      - key: FINDWORK_API_KEY
+        sync: false
+      - key: MUSE_API_KEY
+        sync: false
+      - key: ADZUNA_APP_ID
+        sync: false
+      - key: ADZUNA_APP_KEY
+        sync: false

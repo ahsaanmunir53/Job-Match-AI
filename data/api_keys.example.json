@@ -1,0 +1,13 @@
+{
+  "_readme": "Rename this file to api_keys.json (same folder) and paste your keys in. Delete any line you are not using — a source stays off until every key it needs is filled. Restart the server after editing. Never commit api_keys.json to GitHub.",
+
+  "RAPIDAPI_KEY": "PASTE_HERE — JSearch / Google for Jobs, best one for Pakistan, https://rapidapi.com/letscrape-6bRBa3QguO5/api/jsearch",
+  "JOOBLE_API_KEY": "PASTE_HERE — free key from https://jooble.org/api/about, real Pakistan coverage",
+  "CAREERJET_AFFID": "PASTE_HERE — free affiliate ID from https://www.careerjet.com/partners/api/, runs careerjet.com.pk",
+
+  "ADZUNA_APP_ID": "PASTE_HERE — https://developer.adzuna.com/ (worldwide only, no Pakistan index)",
+  "ADZUNA_APP_KEY": "PASTE_HERE",
+
+  "FINDWORK_API_KEY": "PASTE_HERE — https://findwork.dev/developers/ (remote tech roles)",
+  "MUSE_API_KEY": "PASTE_HERE — https://www.themuse.com/developers/api/v2 (worldwide, US-heavy)"
+}
