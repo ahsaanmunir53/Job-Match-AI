@@ -80,9 +80,12 @@ def load_api_keys() -> dict[str, str]:
                     keys[k.upper()] = v.strip()
         except Exception:
             pass  # a malformed key file must never take the app down
-    for name in os.environ:
-        if name.upper() in {k for s in sources.KEYED_SOURCES.values() for k in s["keys"]}:
-            keys[name.upper()] = os.environ[name]
+    needed = {k for s in sources.KEYED_SOURCES.values() for k in s["keys"]}
+    for name, value in os.environ.items():
+        # Render creates blank variables for fields you leave empty — treat
+        # those as absent, or the source switches on with no credentials.
+        if name.upper() in needed and value.strip() and not value.startswith("PASTE_"):
+            keys[name.upper()] = value.strip()
     return keys
 
 
