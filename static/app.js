@@ -113,6 +113,46 @@ function hideWaking() {
   $("waking").hidden = true;
 }
 
+/* --------------------------------------------------------- explain a match */
+
+async function explainJob(index, btn) {
+  const job = state.jobs[index];
+  const box = document.getElementById("explain-" + index);
+  if (!job || !box) return;
+
+  if (!box.hidden && box.dataset.done === "1") {   // toggle closed
+    box.hidden = true;
+    btn.textContent = "Why this match?";
+    return;
+  }
+  if (box.dataset.done === "1") {                  // already fetched
+    box.hidden = false;
+    btn.textContent = "Hide";
+    return;
+  }
+
+  box.hidden = false;
+  box.innerHTML = `<span class="spin"></span>Reading the posting against your resume…`;
+  btn.disabled = true;
+
+  try {
+    const res = await fetch("/api/explain", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ resume_text: state.resumeText, job }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || "Couldn't generate that.");
+    box.textContent = data.explanation;
+    box.dataset.done = "1";
+    btn.textContent = "Hide";
+  } catch (e) {
+    box.innerHTML = `<span class="err">${esc(e.message)}</span>`;
+  } finally {
+    btn.disabled = false;
+  }
+}
+
 /* ------------------------------------------------------------- job feeds */
 
 const FEED_BLURBS = {
@@ -331,6 +371,12 @@ const board = {
     $("boardDone").textContent = this.done;
     $("boardJobs").textContent = this.jobs;
     $("progressBar").style.width = ((this.done / this.total) * 100) + "%";
+    const head = $("resultsHead");
+    if (this.jobs > 0) {
+      head.hidden = false;
+      $("resultsN").textContent = this.jobs;
+      $("resultsLabel").textContent = "jobs found so far — still searching";
+    }
 
     const cls = status.ok ? (status.count ? "ok" : "warn") : "fail";
     const mark = status.ok ? (status.count ? "✓" : "○") : "✕";
@@ -373,8 +419,12 @@ function renderJobs(jobs) {
   $("emptyState").style.display = "none";
   $("resultsHead").hidden = false;
   $("resultsN").textContent = jobs.length;
+  $("resultsLabel").textContent = state.totalFound > jobs.length
+    ? `shown of ${state.totalFound} matches — best first`
+    : "jobs after filters — sorted by match";
 
-  box.innerHTML = jobs.map((j) => {
+  state.jobs = jobs;
+  box.innerHTML = jobs.map((j, i) => {
     const [cls, pct, bandLabel] = bandOf(j.match_score);
     const skills = (j.matched_skills || []).map(
       (s) => `<span class="chip hit">${esc(s)}</span>`).join("");
@@ -395,9 +445,29 @@ function renderJobs(jobs) {
       </div>
       <div class="apply">
         <a class="btn-solid" href="${esc(j.url)}" target="_blank" rel="noopener">Apply ↗</a>
+        ${state.meta && state.meta.explain_enabled
+          ? `<button class="btn-ghost explain-btn" data-i="${i}" type="button">Why this match?</button>`
+          : ""}
       </div>
+      <div class="explain" id="explain-${i}" hidden></div>
     </article>`;
   }).join("");
+}
+
+function showSkeletons(n = 6) {
+  $("emptyState").style.display = "none";
+  $("results").innerHTML = Array.from({ length: n }, () => `
+    <article class="job skeleton">
+      <div class="score"><div class="sk sk-pct"></div><div class="sk sk-band"></div></div>
+      <div class="body">
+        <div class="sk sk-title"></div>
+        <div class="sk sk-line"></div>
+        <div class="mskills">
+          <div class="sk sk-chip"></div><div class="sk sk-chip"></div><div class="sk sk-chip"></div>
+        </div>
+      </div>
+      <div class="apply"><div class="sk sk-btn"></div></div>
+    </article>`).join("");
 }
 
 async function runSearch() {
@@ -406,9 +476,8 @@ async function runSearch() {
   const btn = $("searchBtn");
   btn.disabled = true;
   btn.textContent = "Searching…";
-  $("emptyState").style.display = "none";
-  $("results").innerHTML = "";
   $("resultsHead").hidden = true;
+  showSkeletons();
 
   const payload = {
     resume_text: state.resumeText,
@@ -428,12 +497,15 @@ async function runSearch() {
     });
     if (!res.ok || !res.body) throw new Error("Search failed to start (HTTP " + res.status + ").");
 
+    let gotDone = false;
     await readNdjson(res, (msg) => {
       if (msg.type === "begin") {
         board.reset(msg.total_sources, "Contacting sources…");
       } else if (msg.type === "source") {
         board.line(msg.status);
       } else if (msg.type === "done") {
+        gotDone = true;
+        state.totalFound = msg.total_found;
         board.finish(`Done — ${msg.total_found} jobs after filters.`);
         $("matchCount").textContent = "(" + msg.total_found + ")";
         renderJobs(msg.jobs);
@@ -442,6 +514,14 @@ async function runSearch() {
         }
       }
     });
+
+    // The stream can end without a final message if the server restarts
+    // mid-search. Never leave the spinner running.
+    if (!gotDone) {
+      board.finish("Search ended early — the connection dropped.");
+      renderJobs([]);
+      toast("The search was cut short. Try again.", true);
+    }
   } catch (e) {
     toast(e.message || "Search failed — check the backend logs.", true);
     board.finish("Search stopped early.");
@@ -537,6 +617,11 @@ document.addEventListener("DOMContentLoaded", () => {
   wireControls();
   loadMeta();
   loadDirectory();
+
+  $("results").addEventListener("click", (e) => {
+    const btn = e.target.closest(".explain-btn");
+    if (btn) explainJob(parseInt(btn.dataset.i, 10), btn);
+  });
 
   $("searchBtn").addEventListener("click", runSearch);
   $("verifyBtn").addEventListener("click", verifySources);
