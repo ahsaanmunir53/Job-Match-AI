@@ -413,6 +413,59 @@ header.top {
 .dir-row .links a:hover { border-color: var(--volt-deep); background: var(--volt-dim); }
 .dir-foot { color: var(--faint); font-size: 12.5px; padding: 14px 4px; }
 
+/* Skeleton cards while a search runs */
+.job.skeleton { pointer-events: none; }
+.sk {
+  background: linear-gradient(90deg, var(--surface-2) 25%, var(--line) 50%, var(--surface-2) 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.4s ease-in-out infinite;
+  border-radius: 6px;
+}
+.sk-pct { height: 21px; width: 46px; margin: 0 auto; }
+.sk-band { height: 9px; width: 34px; margin: 6px auto 0; }
+.sk-title { height: 17px; width: 46%; margin-bottom: 9px; }
+.sk-line { height: 13px; width: 68%; }
+.sk-chip { height: 20px; width: 68px; border-radius: 99px; }
+.sk-chip:nth-child(2) { width: 88px; }
+.sk-chip:nth-child(3) { width: 54px; }
+.sk-btn { height: 34px; width: 84px; border-radius: var(--radius-sm); }
+
+@keyframes shimmer {
+  0%   { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+/* Match explanation */
+.job .explain {
+  grid-column: 1 / -1;
+  background: var(--field);
+  border: 1px solid var(--line-strong);
+  border-left: 3px solid var(--teal);
+  border-radius: var(--radius-sm);
+  padding: 13px 16px;
+  margin-top: 4px;
+  font-size: 13.5px;
+  line-height: 1.65;
+  color: var(--ink);
+  white-space: pre-wrap;
+}
+.job .explain .err { color: var(--red); }
+.job .apply { display: flex; flex-direction: column; gap: 8px; align-items: stretch; }
+.job .apply .explain-btn { font-size: 12.5px; padding: 6px 12px; }
+
+/* Cold-start banner */
+.waking {
+  background: var(--surface-2);
+  border: 1px solid var(--line-strong);
+  border-left: 3px solid var(--volt);
+  border-radius: var(--radius-sm);
+  padding: 12px 16px;
+  margin-bottom: 18px;
+  color: var(--muted);
+  font-size: 13.5px;
+  line-height: 1.5;
+}
+
 /* Job feeds panel */
 .feed-card { margin-bottom: 16px; }
 .feed-lede { color: var(--muted); font-size: 13.5px; margin: 0 0 16px; max-width: 72ch; }

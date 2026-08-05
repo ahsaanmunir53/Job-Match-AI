@@ -16,6 +16,7 @@ from pathlib import Path
 
 from fastapi import FastAPI, File, Form, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
@@ -30,6 +31,8 @@ CONCURRENCY = 20
 app = FastAPI(title="JobMatch AI", version="2.0")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"],
                    allow_headers=["*"])
+# Job payloads and the 637-row directory compress very well.
+app.add_middleware(GZipMiddleware, minimum_size=1000)
 
 
 # ---------------------------------------------------------------------------
@@ -97,6 +100,30 @@ def active_keyed_sources() -> tuple[list[str], dict[str, str]]:
 
 
 # ---------------------------------------------------------------------------
+# Optional match explanations via Groq (off unless GROQ_API_KEY is set)
+# ---------------------------------------------------------------------------
+
+GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
+# Groq retired llama-3.1-8b-instant and llama-3.3-70b-versatile in June 2026.
+# gpt-oss-20b is the current cheap, fast replacement. Override with GROQ_MODEL.
+DEFAULT_GROQ_MODEL = "openai/gpt-oss-20b"
+
+
+def get_secret(name: str) -> str | None:
+    """Read a single secret from data/api_keys.json, then the environment."""
+    path = BASE_DIR / "data" / "api_keys.json"
+    if path.exists():
+        try:
+            value = json.loads(path.read_text()).get(name)
+            if isinstance(value, str) and value.strip() and not value.startswith("PASTE_"):
+                return value.strip()
+        except Exception:
+            pass
+    value = os.environ.get(name, "")
+    return value.strip() or None
+
+
+# ---------------------------------------------------------------------------
 # Basic pages + meta
 # ---------------------------------------------------------------------------
 
@@ -129,6 +156,7 @@ async def meta():
         "keyed_sources": keyed,
         "keyed_active": len(active),
         "restricted_sites": sources.RESTRICTED_SITES,
+        "explain_enabled": bool(get_secret("GROQ_API_KEY")),
     }
 
 
@@ -136,6 +164,74 @@ async def meta():
 async def health():
     """Cheap liveness check — no external calls. Point your uptime pinger here."""
     return {"ok": True, "boards": len(BOARDS), "companies": len(DIRECTORY)}
+
+
+@app.post("/api/explain")
+async def explain(payload: dict):
+    """Short, honest read on how a resume lines up with one job."""
+    api_key = get_secret("GROQ_API_KEY")
+    if not api_key:
+        return JSONResponse({"error": "Match explanations are off. Add "
+                                      "GROQ_API_KEY to turn them on."},
+                            status_code=503)
+
+    resume = (payload.get("resume_text") or "").strip()
+    job = payload.get("job") or {}
+    if not resume:
+        return JSONResponse({"error": "Load your resume first."}, status_code=400)
+
+    matched = ", ".join(job.get("matched_skills") or []) or "none detected"
+    job_text = (
+        f"Title: {job.get('title')}\n"
+        f"Company: {job.get('company')}\n"
+        f"Location: {job.get('location')}\n"
+        f"Skills the matcher found in both: {matched}\n"
+        f"Description: {(job.get('summary') or '')[:1200]}"
+    )
+
+    prompt = (
+        "You are helping a job seeker in Pakistan decide whether to apply.\n\n"
+        f"THEIR RESUME:\n{resume[:3500]}\n\n"
+        f"THE JOB:\n{job_text}\n\n"
+        "Write exactly three short bullets, no preamble, no heading:\n"
+        "• Fit: the strongest specific overlap, naming real skills\n"
+        "• Gap: what the job wants that the resume does not show. If nothing "
+        "meaningful is missing, say so plainly instead of inventing a gap.\n"
+        "• Move: one concrete thing to emphasise in the application\n\n"
+        "Be direct and specific. No flattery, no filler. Under 90 words total."
+    )
+
+    body = {
+        "model": os.environ.get("GROQ_MODEL", DEFAULT_GROQ_MODEL),
+        "messages": [{"role": "user", "content": prompt}],
+        "max_tokens": 300,
+        "temperature": 0.3,
+    }
+
+    try:
+        async with sources.make_client() as client:
+            r = await client.post(GROQ_URL, json=body,
+                                  headers={"Authorization": f"Bearer {api_key}",
+                                           "Content-Type": "application/json"},
+                                  timeout=sources.KEYED_TIMEOUT)
+            if r.status_code == 401:
+                return JSONResponse({"error": "Groq rejected the key."},
+                                    status_code=502)
+            if r.status_code == 404:
+                return JSONResponse({"error": f"Model '{body['model']}' isn't "
+                                              "available. Set GROQ_MODEL to a "
+                                              "current one."}, status_code=502)
+            if r.status_code == 429:
+                return JSONResponse({"error": "Groq rate limit hit. Wait a "
+                                              "moment and try again."},
+                                    status_code=502)
+            r.raise_for_status()
+            data = r.json()
+        text = (data["choices"][0]["message"]["content"] or "").strip()
+        return {"explanation": text, "model": body["model"]}
+    except Exception as e:
+        return JSONResponse({"error": f"Couldn't reach Groq ({type(e).__name__})."},
+                            status_code=502)
 
 
 @app.get("/api/directory")
@@ -307,7 +403,8 @@ async def search(payload: dict):
             unique.sort(key=lambda j: j.get("posted_at") or "", reverse=True)
 
         for j in unique:
-            j.pop("description", None)  # keep the payload light
+            # Trim rather than drop — /api/explain needs some context.
+            j["summary"] = (j.pop("description", "") or "")[:600]
 
         yield json.dumps({"type": "done", "total_found": len(unique),
                           "jobs": unique[:400]}) + "\n"

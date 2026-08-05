@@ -612,8 +612,18 @@ async def fetch_jsearch(client, keywords, scope, keys):
         raise httpx.HTTPStatusError("no JSearch search endpoint responded",
                                     request=r.request, response=r)
 
+    # /search returns data as a list; /search-v2 nests it under data.jobs
+    # alongside a pagination cursor. Accept either.
+    raw = payload.get("data")
+    if isinstance(raw, dict):
+        raw = raw.get("jobs") or raw.get("results") or []
+    if not isinstance(raw, list):
+        raw = []
+
     jobs = []
-    for j in (payload.get("data") or []):
+    for j in raw:
+        if not isinstance(j, dict):
+            continue
         loc = ", ".join(x for x in [j.get("job_city"), j.get("job_state"),
                                     j.get("job_country")] if x)
         jobs.append(make_job(
@@ -661,11 +671,26 @@ async def fetch_careerjet(client, keywords, scope, keys):
         "user_ip": os.environ.get("CAREERJET_USER_IP", "127.0.0.1"),
         "user_agent": UA,
     }
-    r = await client.get("https://public.api.careerjet.net/search", params=params,
-                         headers=HEADERS, timeout=KEYED_TIMEOUT)
-    r.raise_for_status()
+    # Careerjet's public API is documented over http; https sometimes refuses
+    # the connection outright. Try secure first, fall back so it still works.
+    last_error = None
+    for scheme in ("https", "http"):
+        try:
+            r = await client.get(f"{scheme}://public.api.careerjet.net/search",
+                                 params=params, headers=HEADERS,
+                                 timeout=KEYED_TIMEOUT)
+            r.raise_for_status()
+            break
+        except (httpx.ConnectError, httpx.ConnectTimeout) as e:
+            last_error = e
+    else:
+        raise last_error
+
+    data = r.json()
     jobs = []
-    for j in (r.json().get("jobs") or []):
+    for j in (data.get("jobs") or []):
+        if not isinstance(j, dict):
+            continue
         jobs.append(make_job(
             title=j.get("title"), company=j.get("company"),
             location=j.get("locations"), url=j.get("url"),
