@@ -40,20 +40,24 @@ SEARCH_DEADLINE = 40.0
 _board_offset = 0
 
 
-# Workable holds 66 of the 95 boards, and on shared hosting not one of them
-# gets through — every request comes back 429, because the limit is per IP and
-# that IP is shared with every other free-tier tenant. Rotating them evenly
-# would spend most of each search on guaranteed failures.
+# Workable is switched off, on evidence rather than suspicion: across four
+# live runs it was tried 31 times and returned 429 all 31 — at 17 boards in
+# parallel, at 5, at 3, and at 3 spaced two seconds apart. The limit is per IP,
+# and on shared hosting that IP is already spent by other tenants before this
+# app makes its first call. No amount of throttling fixes someone else's usage.
 #
-# So the boards that answer are tried on EVERY search, and Workable gets three
-# rotating slots. All 66 still get covered, just across many searches instead
-# of drowning each one.
+# The boards stay in the registry. On a host with a dedicated outbound IP,
+# set WORKABLE_PER_SEARCH to 3 and they come back.
 LOW_YIELD = {"workable"}
-LOW_YIELD_PER_SEARCH = 3
+LOW_YIELD_PER_SEARCH = int(os.environ.get("WORKABLE_PER_SEARCH", "0"))
 
 
 def select_boards(pool: list[dict]) -> tuple[list[dict], int]:
-    """Every reliable board, plus a rotating handful of the rate-limited ones."""
+    """Every board that answers, plus however many throttled ones are enabled.
+
+    Returns the boards to try and the count deliberately held back — which is
+    not the same thing as a dead board, and should not be reported as one.
+    """
     global _board_offset
     reliable = [b for b in pool if b["ats"] not in LOW_YIELD]
     throttled = [b for b in pool if b["ats"] in LOW_YIELD]
@@ -404,7 +408,6 @@ async def search(payload: dict):
     # that might actually answer.
     pool, skipped_dead = sources.live_boards(pool)
     boards, deferred = select_boards(pool)
-    skipped_dead += deferred
     agg_names = sorted(sources.AGGREGATOR_FETCHERS)
     keyed_names, api_keys = active_keyed_sources()
     total_sources = len(boards) + len(agg_names) + len(keyed_names)
@@ -549,6 +552,7 @@ async def search(payload: dict):
                           "sources_failed": src_failed,
                           "boards_from_cache": carried_boards,
                           "boards_skipped_dead": skipped_dead,
+                          "boards_deferred": deferred,
                           "sample_errors": first_errors,
                           "jobs": payload_jobs}) + "\n"
 

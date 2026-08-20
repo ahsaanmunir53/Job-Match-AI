@@ -575,6 +575,7 @@ async function runSearch() {
           `${msg.sources_failed} failed` +
           (msg.boards_from_cache ? `, ${msg.boards_from_cache} from cache` : "") +
           (msg.boards_skipped_dead ? `, ${msg.boards_skipped_dead} dead boards skipped` : "") +
+          (msg.boards_deferred ? `, ${msg.boards_deferred} throttled boards off` : "") +
           `. Collected ${msg.total_collected}, ${msg.total_found} after filters.`
         );
         $("matchCount").textContent = "(" + msg.total_found + ")";
