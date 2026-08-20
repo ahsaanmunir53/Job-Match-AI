@@ -410,9 +410,35 @@ function renderJobs(jobs) {
   if (!jobs.length) {
     box.innerHTML = "";
     $("emptyState").style.display = "";
-    $("emptyState").innerHTML =
-      "<b>No jobs made it through your filters.</b><br>" +
-      "Try widening “Posted within”, clearing the city, or lowering the minimum match.";
+    const r = state.lastRun;
+
+    // Blaming the filters is only honest when something was actually collected.
+    // If every source came back empty or failed, the filters are innocent and
+    // pointing at them sends you to fiddle with the wrong thing.
+    if (r && r.total_collected === 0) {
+      let why =
+        "<b>No jobs were collected — this is not a filter problem.</b><br>" +
+        `${r.sources_ok + r.sources_empty} sources answered, ${r.sources_failed} failed, ` +
+        "and none returned a single job.<br>";
+      if (r.sample_errors && r.sample_errors.length) {
+        why += "<br><b>What the sources said:</b><br>" +
+          r.sample_errors.map(esc).join("<br>");
+      } else {
+        why += "<br>Every source replied normally with zero open roles, " +
+          "which usually means the board slugs are wrong. " +
+          "Open <code>/api/sources/verify</code> to check them.";
+      }
+      $("emptyState").innerHTML = why;
+    } else if (r) {
+      $("emptyState").innerHTML =
+        `<b>Collected ${r.total_collected} jobs, but none survived your filters.</b><br>` +
+        "Try widening “Posted within”, clearing the city, clearing keywords, " +
+        "or lowering the minimum match.";
+    } else {
+      $("emptyState").innerHTML =
+        "<b>No jobs made it through your filters.</b><br>" +
+        "Try widening “Posted within”, clearing the city, or lowering the minimum match.";
+    }
     $("resultsHead").hidden = true;
     return;
   }
@@ -506,7 +532,13 @@ async function runSearch() {
       } else if (msg.type === "done") {
         gotDone = true;
         state.totalFound = msg.total_found;
-        board.finish(`Done — ${msg.total_found} jobs after filters.`);
+        state.lastRun = msg;
+        board.finish(
+          `Done — ${msg.sources_ok} sources had jobs, ${msg.sources_empty} were empty, ` +
+          `${msg.sources_failed} failed` +
+          (msg.boards_from_cache ? `, ${msg.boards_from_cache} boards from cache` : "") +
+          `. Collected ${msg.total_collected}, ${msg.total_found} left after filters.`
+        );
         $("matchCount").textContent = "(" + msg.total_found + ")";
         renderJobs(msg.jobs);
         if (!state.resumeText && msg.total_found) {

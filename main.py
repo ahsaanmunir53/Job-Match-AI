@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import time
 import os
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -26,7 +27,21 @@ from data_companies import ATS_BOARDS, PK_DIRECTORY
 
 BASE_DIR = Path(__file__).parent
 MAX_UPLOAD = 5 * 1024 * 1024  # 5 MB
-CONCURRENCY = 20
+# Free-tier instances get a fraction of a CPU. Every HTTPS fetch needs a TLS
+# handshake, and a handshake is CPU work — so 20 at once starves the event
+# loop, the health check times out, and the platform restarts the instance
+# mid-search. Five keeps the loop responsive.
+CONCURRENCY = 5
+
+# No single search may run forever. Whatever has arrived by the deadline is
+# what gets returned; the rest are cancelled.
+SEARCH_DEADLINE = 40.0
+
+# Querying every board on every search is what caused the overload. Take a
+# slice each time and rotate the starting point, so all boards still get
+# covered across successive searches.
+BOARDS_PER_SEARCH = 25
+_board_offset = 0
 
 app = FastAPI(title="JobMatch AI", version="2.0")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"],
@@ -286,7 +301,8 @@ def _passes_filters(job: dict, *, keywords: list[str], city: str,
                     work_type: str, posted_days: int | None) -> bool:
     if keywords:
         blob = " ".join([job["title"], job["company"],
-                         " ".join(job.get("tags") or [])]).lower()
+                         " ".join(job.get("tags") or []),
+                         (job.get("description") or "")[:1200]]).lower()
         if not any(k in blob for k in keywords):
             return False
 
@@ -333,7 +349,14 @@ async def search(payload: dict):
     posted_days = payload.get("posted_within_days") or None
     min_match = int(payload.get("min_match") or 0)
 
-    boards = [b for b in BOARDS if b["pk"]] if scope == "pakistan" else BOARDS
+    global _board_offset
+    pool = [b for b in BOARDS if b["pk"]] if scope == "pakistan" else BOARDS
+    if len(pool) > BOARDS_PER_SEARCH:
+        start = _board_offset % len(pool)
+        boards = (pool + pool)[start:start + BOARDS_PER_SEARCH]
+        _board_offset = start + BOARDS_PER_SEARCH
+    else:
+        boards = pool
     agg_names = sorted(sources.AGGREGATOR_FETCHERS)
     keyed_names, api_keys = active_keyed_sources()
     total_sources = len(boards) + len(agg_names) + len(keyed_names)
@@ -345,6 +368,10 @@ async def search(payload: dict):
                           "keyed": len(keyed_names)}) + "\n"
 
         collected: list[dict] = []
+        src_ok = 0
+        src_empty = 0
+        src_failed = 0
+        first_errors: list[str] = []
         sem = asyncio.Semaphore(CONCURRENCY)
 
         async with sources.make_client() as client:
@@ -364,17 +391,49 @@ async def search(payload: dict):
                         client, name, api_keys,
                         payload.get("keywords") or "", scope)
 
-            tasks = [asyncio.create_task(guarded_board(b)) for b in boards]
-            tasks += [asyncio.create_task(guarded_agg(n)) for n in agg_names]
+            # Aggregators first. They are few and reliable, so the page shows
+            # real results early instead of grinding through dead boards.
+            tasks = [asyncio.create_task(guarded_agg(n)) for n in agg_names]
             tasks += [asyncio.create_task(guarded_keyed(n)) for n in keyed_names]
+            tasks += [asyncio.create_task(guarded_board(b)) for b in boards]
 
-            for finished in asyncio.as_completed(tasks):
-                status, jobs = await finished
+            deadline = time.monotonic() + SEARCH_DEADLINE
+            for finished in asyncio.as_completed(tasks, timeout=SEARCH_DEADLINE):
+                try:
+                    status, jobs = await finished
+                except (asyncio.TimeoutError, asyncio.CancelledError):
+                    break
+                except Exception as exc:
+                    src_failed += 1
+                    if len(first_errors) < 5:
+                        first_errors.append(f"unexpected: {exc}")
+                    continue
+                if time.monotonic() > deadline:
+                    break
                 if scope == "pakistan" and status["kind"] in ("aggregator", "keyed"):
                     jobs = [j for j in jobs if sources.looks_pakistan_friendly(j)]
                     status = {**status, "count": len(jobs)}
+                if not status.get("ok"):
+                    src_failed += 1
+                    if status.get("error") and len(first_errors) < 5:
+                        first_errors.append(f"{status.get('label')}: {status['error']}")
+                elif status.get("count"):
+                    src_ok += 1
+                else:
+                    src_empty += 1
                 collected.extend(jobs)
                 yield json.dumps({"type": "source", "status": status}) + "\n"
+
+            for t in tasks:
+                if not t.done():
+                    t.cancel()
+
+        # Fold in boards this run skipped but which are still cached, so the
+        # rotating slice adds to the picture instead of replacing it.
+        carried, carried_boards = sources.cached_board_jobs(boards)
+        if scope == "pakistan":
+            carried = [j for j in carried if sources.looks_pakistan_friendly(j)]
+        collected.extend(carried)
 
         # Filter
         filtered = [j for j in collected
@@ -402,12 +461,25 @@ async def search(payload: dict):
         else:
             unique.sort(key=lambda j: j.get("posted_at") or "", reverse=True)
 
-        for j in unique:
-            # Trim rather than drop — /api/explain needs some context.
-            j["summary"] = (j.pop("description", "") or "")[:600]
+        # Build the payload as fresh dicts. These job objects are the very
+        # same ones held in the source cache, so popping "description" here
+        # would strip it out of the cache too — and the next search within the
+        # cache window would filter against a description that no longer
+        # exists, silently returning fewer jobs each time.
+        payload_jobs = []
+        for j in unique[:400]:
+            out = dict(j)
+            out["summary"] = (out.pop("description", "") or "")[:600]
+            payload_jobs.append(out)
 
         yield json.dumps({"type": "done", "total_found": len(unique),
-                          "jobs": unique[:400]}) + "\n"
+                          "total_collected": len(collected),
+                          "sources_ok": src_ok,
+                          "sources_empty": src_empty,
+                          "sources_failed": src_failed,
+                          "boards_from_cache": carried_boards,
+                          "sample_errors": first_errors,
+                          "jobs": payload_jobs}) + "\n"
 
     return StreamingResponse(stream(), media_type="application/x-ndjson")
 
