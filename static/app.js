@@ -574,6 +574,7 @@ async function runSearch() {
           `Done — ${msg.sources_ok} sources had jobs, ${msg.sources_empty} were empty, ` +
           `${msg.sources_failed} failed` +
           (msg.boards_from_cache ? `, ${msg.boards_from_cache} from cache` : "") +
+          (msg.boards_skipped_dead ? `, ${msg.boards_skipped_dead} dead boards skipped` : "") +
           `. Collected ${msg.total_collected}, ${msg.total_found} after filters.`
         );
         $("matchCount").textContent = "(" + msg.total_found + ")";

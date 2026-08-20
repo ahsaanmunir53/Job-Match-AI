@@ -394,6 +394,9 @@ async def search(payload: dict):
 
     global _board_offset
     pool = [b for b in BOARDS if b["pk"]] if scope == "pakistan" else BOARDS
+    # Boards proven dead earlier are skipped, so the slice is spent on ones
+    # that might actually answer.
+    pool, skipped_dead = sources.live_boards(pool)
     pool = interleave_by_ats(pool)
     if len(pool) > BOARDS_PER_SEARCH:
         start = _board_offset % len(pool)
@@ -544,6 +547,7 @@ async def search(payload: dict):
                           "sources_empty": src_empty,
                           "sources_failed": src_failed,
                           "boards_from_cache": carried_boards,
+                          "boards_skipped_dead": skipped_dead,
                           "sample_errors": first_errors,
                           "jobs": payload_jobs}) + "\n"
 

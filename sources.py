@@ -45,7 +45,32 @@ _HOST_GATES: dict[str, asyncio.Semaphore] = {}
 _HOST_LAST: dict[str, float] = {}
 
 HOST_CONCURRENCY = {"workable": 1, "bamboohr": 1, "greenhouse": 3, "lever": 3}
-HOST_MIN_GAP = {"workable": 0.7, "bamboohr": 0.4}
+HOST_MIN_GAP = {"workable": 1.1, "bamboohr": 0.4}
+
+# A provider that answers 429 is telling us the gap is too small. Widen it for
+# the rest of this process rather than guessing a fixed number that is either
+# too slow on a good day or too fast on a busy one.
+_HOST_PENALTY: dict[str, float] = {}
+PENALTY_STEP = 0.6
+PENALTY_CAP = 3.0
+
+# Boards that 404 or answer with HTML are not coming back within the hour, and
+# every search spent a quarter of its budget re-discovering that. Remember them
+# and give the slots to boards that work. Re-checked after DEAD_TTL.
+_DEAD: dict[str, float] = {}
+DEAD_TTL = 6 * 3600
+
+
+def live_boards(boards: list[dict]) -> tuple[list[dict], int]:
+    """Drop boards known to be dead, and say how many were dropped."""
+    now = time.time()
+    keep = [b for b in boards
+            if _DEAD.get(f"{b['ats']}:{b['slug']}", 0) <= now]
+    return keep, len(boards) - len(keep)
+
+
+def mark_dead(key: str):
+    _DEAD[key] = time.time() + DEAD_TTL
 
 
 async def _host_gate(ats: str):
@@ -53,7 +78,7 @@ async def _host_gate(ats: str):
     if ats not in _HOST_GATES:
         _HOST_GATES[ats] = asyncio.Semaphore(HOST_CONCURRENCY.get(ats, 4))
     await _HOST_GATES[ats].acquire()
-    gap = HOST_MIN_GAP.get(ats, 0.0)
+    gap = HOST_MIN_GAP.get(ats, 0.0) + _HOST_PENALTY.get(ats, 0.0)
     if gap:
         wait = gap - (time.monotonic() - _HOST_LAST.get(ats, 0.0))
         if wait > 0:
@@ -505,20 +530,29 @@ async def run_board(client: httpx.AsyncClient, board: dict) -> tuple[dict, list[
                 break
             except httpx.HTTPStatusError as e:
                 code = e.response.status_code
-                if code == 429 and attempt == 1:
-                    status["error"] = "rate limited, retrying"
-                    await asyncio.sleep(1.5)
-                    continue
-                status["error"] = ("no public board found" if code in (404, 410)
-                                   else "rate limited by the provider"
-                                   if code == 429 else f"HTTP {code}")
+                if code == 429:
+                    # Widen this provider's gap for every later request.
+                    _HOST_PENALTY[ats] = min(
+                        PENALTY_CAP, _HOST_PENALTY.get(ats, 0.0) + PENALTY_STEP)
+                    if attempt == 1:
+                        status["error"] = "rate limited, retrying"
+                        await asyncio.sleep(1.5 + _HOST_PENALTY[ats])
+                        continue
+                if code in (404, 410):
+                    status["error"] = "no public board found"
+                    mark_dead(key)
+                elif code == 429:
+                    status["error"] = "rate limited by the provider"
+                else:
+                    status["error"] = f"HTTP {code}"
                 break
             finally:
                 _host_release(ats)
     except ValueError:
         # json() on a non-JSON body. The endpoint answered with HTML, which
-        # means this is not a public board of that type.
+        # means this is not a public board of that type — permanently.
         status["error"] = "not a public board (no JSON returned)"
+        mark_dead(key)
     except httpx.TimeoutException:
         status["error"] = "timed out"
     except Exception as e:
