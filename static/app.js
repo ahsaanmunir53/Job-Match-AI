@@ -411,29 +411,20 @@ function renderJobs(jobs) {
     box.innerHTML = "";
     $("emptyState").style.display = "";
     const r = state.lastRun;
-
-    // Blaming the filters is only honest when something was actually collected.
-    // If every source came back empty or failed, the filters are innocent and
-    // pointing at them sends you to fiddle with the wrong thing.
     if (r && r.total_collected === 0) {
-      let why =
-        "<b>No jobs were collected — this is not a filter problem.</b><br>" +
+      // Blaming the filters is only honest when something was collected.
+      let why = "<b>No jobs were collected — this is not a filter problem.</b><br>" +
         `${r.sources_ok + r.sources_empty} sources answered, ${r.sources_failed} failed, ` +
         "and none returned a single job.<br>";
-      if (r.sample_errors && r.sample_errors.length) {
-        why += "<br><b>What the sources said:</b><br>" +
-          r.sample_errors.map(esc).join("<br>");
-      } else {
-        why += "<br>Every source replied normally with zero open roles, " +
-          "which usually means the board slugs are wrong. " +
-          "Open <code>/api/sources/verify</code> to check them.";
-      }
+      why += (r.sample_errors && r.sample_errors.length)
+        ? "<br><b>What the sources said:</b><br>" + r.sample_errors.map(esc).join("<br>")
+        : "<br>Every source replied normally with zero open roles, which usually " +
+          "means the board slugs are wrong. Open <code>/api/sources/verify</code> to check.";
       $("emptyState").innerHTML = why;
     } else if (r) {
       $("emptyState").innerHTML =
         `<b>Collected ${r.total_collected} jobs, but none survived your filters.</b><br>` +
-        "Try widening “Posted within”, clearing the city, clearing keywords, " +
-        "or lowering the minimum match.";
+        "Try widening “Posted within”, clearing the city, clearing keywords, or lowering the minimum match.";
     } else {
       $("emptyState").innerHTML =
         "<b>No jobs made it through your filters.</b><br>" +
@@ -445,9 +436,11 @@ function renderJobs(jobs) {
   $("emptyState").style.display = "none";
   $("resultsHead").hidden = false;
   $("resultsN").textContent = jobs.length;
-  $("resultsLabel").textContent = state.totalFound > jobs.length
-    ? `shown of ${state.totalFound} matches — best first`
-    : "jobs after filters — sorted by match";
+  $("resultsLabel").textContent = state.ranked === false
+    ? `arriving — newest first, match scores when the search finishes`
+    : (state.totalFound > jobs.length
+        ? `shown of ${state.totalFound} matches — best first`
+        : "jobs after filters — sorted by match");
 
   state.jobs = jobs;
   box.innerHTML = jobs.map((j, i) => {
@@ -515,6 +508,28 @@ async function runSearch() {
     min_match: parseInt($("minMatch").value, 10),
   };
 
+  const earlyJobs = [];
+  const earlyKeys = new Set();
+  let earlyTimer = null;
+  let finished = false;
+
+  // Re-rendering on every one of ~35 sources would thrash the page, so the
+  // paint is throttled. The list stays sorted newest-first until real match
+  // scores arrive with the final message.
+  function scheduleEarlyRender() {
+    if (earlyTimer || finished) return;
+    earlyTimer = setTimeout(() => {
+      earlyTimer = null;
+      if (finished) return;
+      const sorted = earlyJobs.slice().sort(
+        (a, b) => (b.posted_at || "").localeCompare(a.posted_at || ""));
+      state.totalFound = sorted.length;
+      state.ranked = false;
+      renderJobs(sorted.slice(0, 200));
+      $("matchCount").textContent = "(" + sorted.length + ")";
+    }, 350);
+  }
+
   try {
     const res = await fetch("/api/search", {
       method: "POST",
@@ -529,15 +544,27 @@ async function runSearch() {
         board.reset(msg.total_sources, "Contacting sources…");
       } else if (msg.type === "source") {
         board.line(msg.status);
+        // Show what this source found straight away. These carry no match
+        // score yet — the ranked list arrives at the end and replaces them.
+        if (msg.jobs && msg.jobs.length) {
+          for (const j of msg.jobs) {
+            const key = (j.title + "|" + j.company).toLowerCase();
+            if (!earlyKeys.has(key)) { earlyKeys.add(key); earlyJobs.push(j); }
+          }
+          scheduleEarlyRender();
+        }
       } else if (msg.type === "done") {
         gotDone = true;
+        finished = true;
+        if (earlyTimer) { clearTimeout(earlyTimer); earlyTimer = null; }
         state.totalFound = msg.total_found;
+        state.ranked = true;
         state.lastRun = msg;
         board.finish(
           `Done — ${msg.sources_ok} sources had jobs, ${msg.sources_empty} were empty, ` +
           `${msg.sources_failed} failed` +
-          (msg.boards_from_cache ? `, ${msg.boards_from_cache} boards from cache` : "") +
-          `. Collected ${msg.total_collected}, ${msg.total_found} left after filters.`
+          (msg.boards_from_cache ? `, ${msg.boards_from_cache} from cache` : "") +
+          `. Collected ${msg.total_collected}, ${msg.total_found} after filters.`
         );
         $("matchCount").textContent = "(" + msg.total_found + ")";
         renderJobs(msg.jobs);
@@ -550,9 +577,13 @@ async function runSearch() {
     // The stream can end without a final message if the server restarts
     // mid-search. Never leave the spinner running.
     if (!gotDone) {
-      board.finish("Search ended early — the connection dropped.");
-      renderJobs([]);
-      toast("The search was cut short. Try again.", true);
+      finished = true;
+      if (earlyTimer) { clearTimeout(earlyTimer); earlyTimer = null; }
+      // Keep what arrived rather than blanking the page.
+      board.finish(`Search ended early — showing the ${earlyJobs.length} jobs that arrived.`);
+      state.totalFound = earlyJobs.length;
+      renderJobs(earlyJobs.slice(0, 200));
+      toast("The search was cut short, but these came through.", true);
     }
   } catch (e) {
     toast(e.message || "Search failed — check the backend logs.", true);

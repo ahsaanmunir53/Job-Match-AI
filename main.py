@@ -27,19 +27,16 @@ from data_companies import ATS_BOARDS, PK_DIRECTORY
 
 BASE_DIR = Path(__file__).parent
 MAX_UPLOAD = 5 * 1024 * 1024  # 5 MB
-# Free-tier instances get a fraction of a CPU. Every HTTPS fetch needs a TLS
-# handshake, and a handshake is CPU work — so 20 at once starves the event
-# loop, the health check times out, and the platform restarts the instance
-# mid-search. Five keeps the loop responsive.
+# Free-tier instances get a fraction of a CPU, and every HTTPS fetch needs a
+# TLS handshake — which is CPU work. Twenty at once starved the event loop, the
+# health check timed out, and the platform restarted the instance mid-search.
 CONCURRENCY = 5
 
-# No single search may run forever. Whatever has arrived by the deadline is
-# what gets returned; the rest are cancelled.
+# No search may run forever. Whatever arrived by the deadline is what ships.
 SEARCH_DEADLINE = 40.0
 
-# Querying every board on every search is what caused the overload. Take a
-# slice each time and rotate the starting point, so all boards still get
-# covered across successive searches.
+# Hitting every board on every search is what caused the overload. Take a slice
+# and rotate the starting point, so all boards still get covered over time.
 BOARDS_PER_SEARCH = 25
 _board_offset = 0
 
@@ -184,16 +181,18 @@ async def health():
 @app.post("/api/explain")
 async def explain(payload: dict):
     """Short, honest read on how a resume lines up with one job."""
-    api_key = get_secret("GROQ_API_KEY")
-    if not api_key:
-        return JSONResponse({"error": "Match explanations are off. Add "
-                                      "GROQ_API_KEY to turn them on."},
-                            status_code=503)
-
     resume = (payload.get("resume_text") or "").strip()
     job = payload.get("job") or {}
     if not resume:
         return JSONResponse({"error": "Load your resume first."}, status_code=400)
+
+    # The explanation is built from the matcher's own data. A Groq key only
+    # improves the wording — without one the feature still answers, instead of
+    # showing an error where the answer should be.
+    api_key = get_secret("GROQ_API_KEY")
+    if not api_key:
+        return {"explanation": matching.local_explanation(resume, job),
+                "source": "local"}
 
     matched = ", ".join(job.get("matched_skills") or []) or "none detected"
     job_text = (
@@ -230,23 +229,32 @@ async def explain(payload: dict):
                                            "Content-Type": "application/json"},
                                   timeout=sources.KEYED_TIMEOUT)
             if r.status_code == 401:
-                return JSONResponse({"error": "Groq rejected the key."},
-                                    status_code=502)
+                return {"explanation": matching.local_explanation(resume, job),
+                        "source": "local",
+                        "note": "Groq rejected the key — showing the local read."}
             if r.status_code == 404:
-                return JSONResponse({"error": f"Model '{body['model']}' isn't "
-                                              "available. Set GROQ_MODEL to a "
-                                              "current one."}, status_code=502)
+                return {"explanation": matching.local_explanation(resume, job),
+                        "source": "local",
+                        "note": f"Model '{body['model']}' is not available — "
+                                "showing the local read."}
             if r.status_code == 429:
-                return JSONResponse({"error": "Groq rate limit hit. Wait a "
-                                              "moment and try again."},
-                                    status_code=502)
+                return {"explanation": matching.local_explanation(resume, job),
+                        "source": "local",
+                        "note": "Groq rate limit hit — showing the local read."}
             r.raise_for_status()
             data = r.json()
         text = (data["choices"][0]["message"]["content"] or "").strip()
-        return {"explanation": text, "model": body["model"]}
+        if not text:
+            return {"explanation": matching.local_explanation(resume, job),
+                    "source": "local",
+                    "note": "Groq returned nothing — showing the local read."}
+        return {"explanation": text, "source": "groq", "model": body["model"]}
     except Exception as e:
-        return JSONResponse({"error": f"Couldn't reach Groq ({type(e).__name__})."},
-                            status_code=502)
+        # Never leave the panel blank. A local answer beats an error message.
+        return {"explanation": matching.local_explanation(resume, job),
+                "source": "local",
+                "note": f"Couldn't reach Groq ({type(e).__name__}) — "
+                        "showing the local read."}
 
 
 @app.get("/api/directory")
@@ -368,9 +376,8 @@ async def search(payload: dict):
                           "keyed": len(keyed_names)}) + "\n"
 
         collected: list[dict] = []
-        src_ok = 0
-        src_empty = 0
-        src_failed = 0
+        early_seen: set[tuple[str, str]] = set()
+        src_ok = src_empty = src_failed = 0
         first_errors: list[str] = []
         sem = asyncio.Semaphore(CONCURRENCY)
 
@@ -391,8 +398,8 @@ async def search(payload: dict):
                         client, name, api_keys,
                         payload.get("keywords") or "", scope)
 
-            # Aggregators first. They are few and reliable, so the page shows
-            # real results early instead of grinding through dead boards.
+            # Aggregators first: few, reliable, and they put real results on
+            # the page while the slower boards are still being tried.
             tasks = [asyncio.create_task(guarded_agg(n)) for n in agg_names]
             tasks += [asyncio.create_task(guarded_keyed(n)) for n in keyed_names]
             tasks += [asyncio.create_task(guarded_board(b)) for b in boards]
@@ -406,7 +413,7 @@ async def search(payload: dict):
                 except Exception as exc:
                     src_failed += 1
                     if len(first_errors) < 5:
-                        first_errors.append(f"unexpected: {exc}")
+                        first_errors.append(f"unexpected: {type(exc).__name__}")
                     continue
                 if time.monotonic() > deadline:
                     break
@@ -421,12 +428,35 @@ async def search(payload: dict):
                     src_ok += 1
                 else:
                     src_empty += 1
-                collected.extend(jobs)
-                yield json.dumps({"type": "source", "status": status}) + "\n"
 
-            for t in tasks:
-                if not t.done():
-                    t.cancel()
+                collected.extend(jobs)
+
+                # Send this source's usable jobs straight away so the page
+                # fills while the search runs. No match scores here on purpose:
+                # score_jobs weighs terms across the whole result set, so a
+                # per-source score would be a different — and wrong — number.
+                # The ranked list arrives in the "done" message and replaces
+                # these.
+                early = []
+                for j in jobs:
+                    if not _passes_filters(j, keywords=keywords, city=city,
+                                           work_type=work_type,
+                                           posted_days=posted_days):
+                        continue
+                    key = (j["title"].lower(), j["company"].lower())
+                    if key in early_seen:
+                        continue
+                    early_seen.add(key)
+                    out = dict(j)     # never mutate the cached original
+                    out["summary"] = (out.pop("description", "") or "")[:300]
+                    early.append(out)
+
+                yield json.dumps({"type": "source", "status": status,
+                                  "jobs": early[:60]}) + "\n"
+
+        for t in tasks:
+            if not t.done():
+                t.cancel()
 
         # Fold in boards this run skipped but which are still cached, so the
         # rotating slice adds to the picture instead of replacing it.
@@ -462,10 +492,10 @@ async def search(payload: dict):
             unique.sort(key=lambda j: j.get("posted_at") or "", reverse=True)
 
         # Build the payload as fresh dicts. These job objects are the very
-        # same ones held in the source cache, so popping "description" here
-        # would strip it out of the cache too — and the next search within the
-        # cache window would filter against a description that no longer
-        # exists, silently returning fewer jobs each time.
+        # ones held in the source cache, so popping "description" here would
+        # strip it from the cache too — and the next search inside the cache
+        # window would filter against a description that no longer exists,
+        # quietly returning fewer jobs each time.
         payload_jobs = []
         for j in unique[:400]:
             out = dict(j)

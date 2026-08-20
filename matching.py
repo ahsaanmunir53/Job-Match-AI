@@ -364,3 +364,74 @@ def score_jobs(resume_text: str, jobs: list[dict]) -> list[dict]:
         job["matched_skills"] = sorted(overlap)[:10]
 
     return jobs
+
+
+def local_explanation(resume_text: str, job: dict) -> str:
+    """A match explanation built from the matcher's own data.
+
+    The LLM version reads better, but it needs an API key and a network round
+    trip. Everything needed for an honest answer is already computed during
+    scoring — which skills overlap, which the posting asks for and the resume
+    does not show — so the feature works with no key at all and simply reads
+    better when one is present.
+    """
+    resume_skills = set(extract_skills(resume_text))
+
+    # The job dict that reaches this endpoint has already had "description"
+    # renamed to "summary" for the wire. Read both, or the posting looks like
+    # it asks for nothing but its own job title.
+    doc = " ".join([
+        job.get("title") or "",
+        " ".join(job.get("tags") or []),
+        (job.get("description") or job.get("summary") or "")[:2500],
+    ])
+    job_skills = set(extract_skills(doc))
+
+    overlap = sorted(resume_skills & job_skills)
+    missing = sorted(job_skills - resume_skills)
+    score = job.get("match_score")
+
+    def listify(items, limit=5):
+        items = items[:limit]
+        if len(items) == 1:
+            return items[0]
+        return ", ".join(items[:-1]) + " and " + items[-1]
+
+    lines = []
+
+    if overlap:
+        lines.append("• Fit: the posting asks for " + listify(overlap) +
+                     ", and your resume shows all of those.")
+    else:
+        lines.append("• Fit: no named skill from your resume appears in this "
+                     "posting. The match is based on wording, not on a shared "
+                     "toolset — read the description before spending time on it.")
+
+    if missing:
+        lines.append("• Gap: it also mentions " + listify(missing, 4) +
+                     ", which your resume does not name anywhere.")
+    elif overlap:
+        lines.append("• Gap: nothing significant. Every skill this posting "
+                     "names is already on your resume.")
+    else:
+        lines.append("• Gap: the posting is too thin to compare properly. "
+                     "Some boards return a title and little else.")
+
+    if overlap:
+        lead = overlap[:2]
+        lines.append("• Move: lead your application with " + listify(lead) +
+                     ", and name a project where you used them together.")
+    else:
+        lines.append("• Move: only apply if the description convinces you. "
+                     "A generic application to a role you do not match is "
+                     "worse than not applying.")
+
+    if isinstance(score, int):
+        n_ov, n_ms = len(overlap), len(missing)
+        lines.append(
+            f"\nMatch score {score}/100 — "
+            f"{n_ov} shared skill{'' if n_ov == 1 else 's'}, "
+            f"{n_ms} asked for that you have not listed."
+        )
+
+    return "\n".join(lines)

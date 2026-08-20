@@ -26,12 +26,12 @@ UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
       "(KHTML, like Gecko) Chrome/124.0 Safari/537.36 JobMatchAI/2.0")
 
 HEADERS = {"User-Agent": UA, "Accept": "application/json, text/xml, */*"}
-# Shorter than before: a slow board must not hold up the whole search.
+# Shorter than before: one slow board must not hold up the whole search.
 TIMEOUT = httpx.Timeout(6.0, connect=3.0)
 # Keyed aggregator APIs are much slower than ATS boards — JSearch alone
 # averages ~8.5s — so they get their own, far more patient budget.
 KEYED_TIMEOUT = httpx.Timeout(15.0, connect=5.0)
-# Longer cache: restarts wipe it, so what survives should last.
+# Longer: restarts wipe the cache, so what survives should last.
 CACHE_TTL = 30 * 60  # seconds
 
 _CACHE: dict[str, tuple[float, list[dict], dict]] = {}
@@ -429,12 +429,12 @@ AGGREGATOR_FETCHERS = {
 # ---------------------------------------------------------------------------
 
 def cached_board_jobs(boards: list[dict]) -> tuple[list[dict], int]:
-    """Jobs already sitting in the cache for boards this search will not fetch.
+    """Jobs already cached for boards this search will not fetch.
 
     Searches rotate through a slice of the board list to keep the instance
-    alive, so without this the results would swing wildly between runs —
-    twenty jobs, then three, then twenty again. Reading the rest from cache
-    means the picture only ever grows as more boards get covered.
+    alive. Without this the results would swing between runs — twenty jobs,
+    then three, then twenty. Reading the rest from cache means the picture
+    only grows as more boards get covered.
     """
     wanted = {f"{b['ats']}:{b['slug']}" for b in boards}
     jobs: list[dict] = []
