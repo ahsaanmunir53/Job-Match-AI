@@ -37,29 +37,35 @@ SEARCH_DEADLINE = 40.0
 
 # Hitting every board on every search is what caused the overload. Take a slice
 # and rotate the starting point, so all boards still get covered over time.
-BOARDS_PER_SEARCH = 25
 _board_offset = 0
 
 
-def interleave_by_ats(boards: list[dict]) -> list[dict]:
-    """Round-robin the boards across providers.
+# Workable holds 66 of the 95 boards, and on shared hosting not one of them
+# gets through — every request comes back 429, because the limit is per IP and
+# that IP is shared with every other free-tier tenant. Rotating them evenly
+# would spend most of each search on guaranteed failures.
+#
+# So the boards that answer are tried on EVERY search, and Workable gets three
+# rotating slots. All 66 still get covered, just across many searches instead
+# of drowning each one.
+LOW_YIELD = {"workable"}
+LOW_YIELD_PER_SEARCH = 3
 
-    The registry is grouped by ATS and two thirds of it is Workable, so a
-    plain slice of 25 could be 25 Workable boards — which the per-host gate
-    then serialises into a queue longer than the search deadline. Mixing them
-    means every slice touches several hosts at once.
-    """
-    buckets: dict[str, list[dict]] = {}
-    for b in boards:
-        buckets.setdefault(b["ats"], []).append(b)
-    out, order = [], list(buckets)
-    i = 0
-    while any(buckets.values()):
-        group = buckets[order[i % len(order)]]
-        if group:
-            out.append(group.pop(0))
-        i += 1
-    return out
+
+def select_boards(pool: list[dict]) -> tuple[list[dict], int]:
+    """Every reliable board, plus a rotating handful of the rate-limited ones."""
+    global _board_offset
+    reliable = [b for b in pool if b["ats"] not in LOW_YIELD]
+    throttled = [b for b in pool if b["ats"] in LOW_YIELD]
+
+    picked: list[dict] = []
+    if throttled:
+        start = _board_offset % len(throttled)
+        picked = (throttled + throttled)[start:start + LOW_YIELD_PER_SEARCH]
+        _board_offset = start + LOW_YIELD_PER_SEARCH
+
+    return reliable + picked, len(throttled) - len(picked)
+
 
 app = FastAPI(title="JobMatch AI", version="2.0")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"],
@@ -397,13 +403,8 @@ async def search(payload: dict):
     # Boards proven dead earlier are skipped, so the slice is spent on ones
     # that might actually answer.
     pool, skipped_dead = sources.live_boards(pool)
-    pool = interleave_by_ats(pool)
-    if len(pool) > BOARDS_PER_SEARCH:
-        start = _board_offset % len(pool)
-        boards = (pool + pool)[start:start + BOARDS_PER_SEARCH]
-        _board_offset = start + BOARDS_PER_SEARCH
-    else:
-        boards = pool
+    boards, deferred = select_boards(pool)
+    skipped_dead += deferred
     agg_names = sorted(sources.AGGREGATOR_FETCHERS)
     keyed_names, api_keys = active_keyed_sources()
     total_sources = len(boards) + len(agg_names) + len(keyed_names)

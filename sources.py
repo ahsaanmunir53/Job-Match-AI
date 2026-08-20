@@ -45,7 +45,9 @@ _HOST_GATES: dict[str, asyncio.Semaphore] = {}
 _HOST_LAST: dict[str, float] = {}
 
 HOST_CONCURRENCY = {"workable": 1, "bamboohr": 1, "greenhouse": 3, "lever": 3}
-HOST_MIN_GAP = {"workable": 1.1, "bamboohr": 0.4}
+# Only three Workable boards run per search now, so they can afford a
+# generous gap without slowing the search down.
+HOST_MIN_GAP = {"workable": 2.0, "bamboohr": 0.4}
 
 # A provider that answers 429 is telling us the gap is too small. Widen it for
 # the rest of this process rather than guessing a fixed number that is either

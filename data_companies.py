@@ -21,22 +21,20 @@ Two datasets:
 #     ats ∈ greenhouse | lever | ashby | workable | smartrecruiters |
 #           recruitee | bamboohr | breezy
 #     pk_relevant=True → offices in Pakistan or a track record of hiring
-#     Pakistan-based/remote talent. Slugs are unverified seeds by design.
+#     Pakistan-based/remote talent.
+#
+#     Twelve entries were removed after three consecutive live runs returned
+#     404 or an HTML body for every one of them: their slugs were wrong, or
+#     the company never had a public board on that ATS. They were consuming a
+#     third of each search's board budget to re-learn the same thing.
 # ---------------------------------------------------------------------------
 
 ATS_BOARDS = [
     # --- Pakistan offices / PK-founded ---
     ("Motive",                "greenhouse",      "gomotive",          True,  ["devops", "backend", "ai"]),
     ("Careem",                "greenhouse",      "careem",            True,  ["backend", "mobile", "data"]),
-    ("Afiniti",               "greenhouse",      "afiniti",           True,  ["ai", "data", "backend"]),
     ("Turing",                "greenhouse",      "turing",            True,  ["remote", "ai", "fullstack"]),
     ("Educative",             "lever",           "educative",         True,  ["fullstack", "content", "backend"]),
-    ("Securiti",              "lever",           "securiti",          True,  ["security", "backend", "ai"]),
-    ("Bazaar Technologies",   "lever",           "bazaartechnologies",True,  ["backend", "data", "product"]),
-    ("Dubizzle Labs",         "lever",           "dubizzlelabs",      True,  ["backend", "frontend", "data"]),
-    ("Tajir",                 "lever",           "tajir",             True,  ["backend", "ops"]),
-    ("Retailo",               "lever",           "retailo",           True,  ["backend", "data"]),
-    ("Bykea",                 "lever",           "bykea",             True,  ["mobile", "backend"]),
     ("Remotebase",            "lever",           "remotebase",        True,  ["remote", "fullstack"]),
     ("SadaPay",               "workable",        "sadapay",           True,  ["fintech", "mobile", "backend"]),
     ("NayaPay",               "workable",        "nayapay",           True,  ["fintech", "backend"]),
@@ -51,18 +49,14 @@ ATS_BOARDS = [
     ("Krave Mart",            "lever",           "kravemart",         True,  ["ecommerce", "backend"]),
     ("Dastgyr",               "workable",        "dastgyr",           True,  ["ecommerce", "backend"]),
     ("Zameen",                "workable",        "zameen",            True,  ["frontend", "backend", "data"]),
-    ("Daraz",                 "recruitee",       "daraz",             True,  ["ecommerce", "data", "backend"]),
     ("Foodpanda (Delivery Hero)", "smartrecruiters", "DeliveryHero",  True,  ["ecommerce", "data", "backend"]),
     ("Jazz (VEON)",           "smartrecruiters", "VEON",              True,  ["telecom", "data", "devops"]),
     ("Systems Limited",       "smartrecruiters", "SystemsLimited",    True,  ["enterprise", "fullstack"]),
-    ("10Pearls",              "greenhouse",      "10pearls",          True,  ["fullstack", "mobile", "qa"]),
-    ("Arbisoft",              "bamboohr",        "arbisoft",          True,  ["python", "fullstack", "data"]),
     ("Tkxel",                 "workable",        "tkxel",             True,  ["fullstack", "mobile"]),
     ("Confiz",                "workable",        "confiz",            True,  ["data", "dotnet", "retail-tech"]),
     ("Devsinc",               "workable",        "devsinc",           True,  ["fullstack", "ruby", "python"]),
     ("Folio3",                "workable",        "folio3",            True,  ["fullstack", "ai", "erp"]),
     ("NetSol Technologies",   "workable",        "netsol",            True,  ["enterprise", "fintech"]),
-    ("Contour Software",      "bamboohr",        "contour",           True,  ["dotnet", "fullstack"]),
     ("InvoZone",              "workable",        "invozone",          True,  ["fullstack", "python"]),
     ("Emumba",                "workable",        "emumba",            True,  ["data", "devops", "python"]),
     ("Qbatch",                "workable",        "qbatch",            True,  ["fullstack", "python"]),
@@ -73,7 +67,6 @@ ATS_BOARDS = [
     ("CareCloud",             "workable",        "carecloud",         True,  ["healthtech", "fullstack"]),
     ("i2c Inc",               "workable",        "i2cinc",            True,  ["fintech", "backend"]),
     ("Shufti Pro",            "workable",        "shuftipro",         True,  ["ai", "kyc", "backend"]),
-    ("Tintash",               "bamboohr",        "tintash",           True,  ["games", "mobile", "fullstack"]),
     ("Mindstorm Studios",     "workable",        "mindstormstudios",  True,  ["games", "unity"]),
     ("Game District",         "workable",        "gamedistrict",      True,  ["games", "unity"]),
     ("Cubix",                 "workable",        "cubix",             True,  ["mobile", "fullstack", "blockchain"]),
@@ -147,11 +140,8 @@ PK_DIRECTORY = [
     # ---- Software & IT services ----
     ("Systems Limited", "Software & IT services", "Lahore", "systemsltd.com"),
     ("NetSol Technologies", "Software & IT services", "Lahore", "netsoltech.com"),
-    ("10Pearls", "Software & IT services", "Karachi", "10pearls.com"),
-    ("Arbisoft", "Software & IT services", "Lahore", "arbisoft.com"),
     ("VentureDive", "Software & IT services", "Karachi", "venturedive.com"),
     ("Techlogix", "Software & IT services", "Lahore", "techlogix.com"),
-    ("Contour Software", "Software & IT services", "Karachi", "contour-software.com"),
     ("Folio3", "Software & IT services", "Karachi", "folio3.com"),
     ("Devsinc", "Software & IT services", "Lahore", "devsinc.com"),
     ("Nextbridge", "Software & IT services", "Lahore", "nextbridge.com"),
@@ -199,7 +189,6 @@ PK_DIRECTORY = [
     ("Gaditek", "Software & IT services", "Karachi", "gaditek.com"),
     ("Securiti.ai", "Software & IT services", "Karachi", "securiti.ai"),
     ("Motive", "Software & IT services", "Islamabad", "gomotive.com"),
-    ("Afiniti", "Software & IT services", "Karachi", "afiniti.com"),
     ("Educative", "Software & IT services", "Lahore", "educative.io"),
     ("Dubizzle Labs (EMPG)", "Software & IT services", "Lahore", "dubizzlelabs.com"),
     ("Turing (remote)", "Software & IT services", "Remote", "turing.com"),
@@ -247,7 +236,6 @@ PK_DIRECTORY = [
     ("Frag Games", "Gaming & creative tech", "Lahore", "fraggames.com"),
     ("Game District", "Gaming & creative tech", "Lahore", "gamedistrict.co"),
     ("GenITeam Solutions", "Gaming & creative tech", "Lahore", "geniteam.com"),
-    ("Tintash", "Gaming & creative tech", "Lahore", "tintash.com"),
 
     # ---- Telecom & ISP ----
     ("Jazz", "Telecom & ISP", "Islamabad", "jazz.com.pk"),
@@ -348,7 +336,6 @@ PK_DIRECTORY = [
     ("Pak-Qatar Takaful", "Insurance & finance", "Karachi", "pakqatar.com.pk"),
 
     # ---- E-commerce & marketplaces ----
-    ("Daraz", "E-commerce & marketplaces", "Karachi", "daraz.pk"),
     ("PakWheels", "E-commerce & marketplaces", "Lahore", "pakwheels.com"),
     ("Zameen.com", "E-commerce & marketplaces", "Lahore", "zameen.com"),
     ("Graana", "E-commerce & marketplaces", "Islamabad", "graana.com"),
@@ -363,10 +350,7 @@ PK_DIRECTORY = [
     ("Krave Mart", "E-commerce & marketplaces", "Karachi", "kravemart.com"),
     ("GrocerApp", "E-commerce & marketplaces", "Lahore", "grocerapp.pk"),
     ("Dastgyr", "E-commerce & marketplaces", "Karachi", "dastgyr.com"),
-    ("Bazaar Technologies", "E-commerce & marketplaces", "Karachi", "bazaartech.com"),
-    ("Retailo", "E-commerce & marketplaces", "Karachi", "retailo.co"),
     ("Jugnu", "E-commerce & marketplaces", "Lahore", "jugnu.pk"),
-    ("Tajir", "E-commerce & marketplaces", "Lahore", "tajir.app"),
     ("Markaz", "E-commerce & marketplaces", "Karachi", "markaz.app"),
     ("DealCart", "E-commerce & marketplaces", "Karachi", "dealcart.io"),
     ("Zaraye", "E-commerce & marketplaces", "Karachi", "zaraye.co"),
@@ -380,7 +364,6 @@ PK_DIRECTORY = [
 
     # ---- Mobility ----
     ("Careem", "Mobility", "Karachi", "careem.com"),
-    ("Bykea", "Mobility", "Karachi", "bykea.com"),
     ("inDrive Pakistan", "Mobility", "Karachi", "indrive.com"),
     ("Yango Pakistan", "Mobility", "Karachi", "yango.com"),
     ("ezBike", "Mobility", "Islamabad", "ezbike.pk"),
