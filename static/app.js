@@ -143,7 +143,17 @@ async function explainJob(index, btn) {
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || "Couldn't generate that.");
-    box.textContent = data.explanation;
+
+    // A 200 with an empty body used to render a blank box, which looked
+    // exactly like the feature being broken. Never leave it empty.
+    const text = (data.explanation || "").trim();
+    if (!text) throw new Error("The model returned an empty answer. Try again.");
+
+    box.textContent = text;
+    if (data.note) {
+      box.insertAdjacentHTML("beforeend",
+        `<div class="note">${esc(data.note)}</div>`);
+    }
     box.dataset.done = "1";
     btn.textContent = "Hide";
   } catch (e) {

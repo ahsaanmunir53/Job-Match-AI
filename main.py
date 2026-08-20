@@ -40,6 +40,27 @@ SEARCH_DEADLINE = 40.0
 BOARDS_PER_SEARCH = 25
 _board_offset = 0
 
+
+def interleave_by_ats(boards: list[dict]) -> list[dict]:
+    """Round-robin the boards across providers.
+
+    The registry is grouped by ATS and two thirds of it is Workable, so a
+    plain slice of 25 could be 25 Workable boards — which the per-host gate
+    then serialises into a queue longer than the search deadline. Mixing them
+    means every slice touches several hosts at once.
+    """
+    buckets: dict[str, list[dict]] = {}
+    for b in boards:
+        buckets.setdefault(b["ats"], []).append(b)
+    out, order = [], list(buckets)
+    i = 0
+    while any(buckets.values()):
+        group = buckets[order[i % len(order)]]
+        if group:
+            out.append(group.pop(0))
+        i += 1
+    return out
+
 app = FastAPI(title="JobMatch AI", version="2.0")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"],
                    allow_headers=["*"])
@@ -215,12 +236,22 @@ async def explain(payload: dict):
         "Be direct and specific. No flattery, no filler. Under 90 words total."
     )
 
+    model = os.environ.get("GROQ_MODEL", DEFAULT_GROQ_MODEL)
     body = {
-        "model": os.environ.get("GROQ_MODEL", DEFAULT_GROQ_MODEL),
+        "model": model,
         "messages": [{"role": "user", "content": prompt}],
-        "max_tokens": 300,
+        # gpt-oss and qwen3 are reasoning models: they spend tokens thinking
+        # before they write anything. The old budget of 300 was consumed
+        # entirely by that reasoning, so "content" came back empty and the
+        # panel rendered nothing — a 200 response with no answer in it.
+        "max_completion_tokens": 1200,
         "temperature": 0.3,
     }
+    if "gpt-oss" in model or "qwen3" in model:
+        # This is a short, mechanical comparison. It does not need deep
+        # reasoning, and low effort leaves the budget for the actual answer.
+        body["reasoning_effort"] = "low"
+        body["include_reasoning"] = False
 
     try:
         async with sources.make_client() as client:
@@ -243,7 +274,11 @@ async def explain(payload: dict):
                         "note": "Groq rate limit hit — showing the local read."}
             r.raise_for_status()
             data = r.json()
-        text = (data["choices"][0]["message"]["content"] or "").strip()
+        msg = data["choices"][0]["message"]
+        text = (msg.get("content") or "").strip()
+        # A reasoning model whose budget ran out leaves "content" empty and
+        # everything in "reasoning" — raw internal monologue, not an answer.
+        # The local read is better than showing that.
         if not text:
             return {"explanation": matching.local_explanation(resume, job),
                     "source": "local",
@@ -359,6 +394,7 @@ async def search(payload: dict):
 
     global _board_offset
     pool = [b for b in BOARDS if b["pk"]] if scope == "pakistan" else BOARDS
+    pool = interleave_by_ats(pool)
     if len(pool) > BOARDS_PER_SEARCH:
         start = _board_offset % len(pool)
         boards = (pool + pool)[start:start + BOARDS_PER_SEARCH]

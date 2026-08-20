@@ -36,6 +36,36 @@ CACHE_TTL = 30 * 60  # seconds
 
 _CACHE: dict[str, tuple[float, list[dict], dict]] = {}
 
+# Every Workable board lives on the same host, apply.workable.com, and two
+# thirds of our registry is Workable. Firing them off in parallel earned a wall
+# of HTTP 429s — the host rate-limits per IP, not per board. So requests to a
+# provider are gated per host, and the busiest one is served strictly one at a
+# time with a gap between calls.
+_HOST_GATES: dict[str, asyncio.Semaphore] = {}
+_HOST_LAST: dict[str, float] = {}
+
+HOST_CONCURRENCY = {"workable": 1, "bamboohr": 1, "greenhouse": 3, "lever": 3}
+HOST_MIN_GAP = {"workable": 0.7, "bamboohr": 0.4}
+
+
+async def _host_gate(ats: str):
+    """Hold a slot for this provider, spacing calls to the touchy ones."""
+    if ats not in _HOST_GATES:
+        _HOST_GATES[ats] = asyncio.Semaphore(HOST_CONCURRENCY.get(ats, 4))
+    await _HOST_GATES[ats].acquire()
+    gap = HOST_MIN_GAP.get(ats, 0.0)
+    if gap:
+        wait = gap - (time.monotonic() - _HOST_LAST.get(ats, 0.0))
+        if wait > 0:
+            await asyncio.sleep(wait)
+    _HOST_LAST[ats] = time.monotonic()
+
+
+def _host_release(ats: str):
+    gate = _HOST_GATES.get(ats)
+    if gate:
+        gate.release()
+
 PK_CITY_WORDS = ("pakistan", "karachi", "lahore", "islamabad", "rawalpindi",
                  "faisalabad", "multan", "peshawar", "hyderabad", "sialkot",
                  "gujranwala", "quetta")
@@ -458,22 +488,41 @@ async def run_board(client: httpx.AsyncClient, board: dict) -> tuple[dict, list[
 
     status = {"id": key, "label": board["name"], "kind": "ats",
               "ats": board["ats"], "ok": False, "count": 0, "error": None}
+    ats = board["ats"]
+    fetcher = ATS_FETCHERS[ats]
+    jobs = []
     try:
-        fetcher = ATS_FETCHERS[board["ats"]]
-        jobs = await fetcher(client, board["slug"], board["name"])
-        status["ok"] = True
-        status["count"] = len(jobs)
-    except httpx.HTTPStatusError as e:
-        code = e.response.status_code
-        status["error"] = "no public board found" if code in (404, 410) \
-            else f"HTTP {code}"
-        jobs = []
+        # One retry on 429: a rate limit is a "come back shortly", not a
+        # dead board, and treating it as failure loses two thirds of the
+        # registry on every search.
+        for attempt in (1, 2):
+            await _host_gate(ats)
+            try:
+                jobs = await fetcher(client, board["slug"], board["name"])
+                status["ok"] = True
+                status["count"] = len(jobs)
+                status["error"] = None
+                break
+            except httpx.HTTPStatusError as e:
+                code = e.response.status_code
+                if code == 429 and attempt == 1:
+                    status["error"] = "rate limited, retrying"
+                    await asyncio.sleep(1.5)
+                    continue
+                status["error"] = ("no public board found" if code in (404, 410)
+                                   else "rate limited by the provider"
+                                   if code == 429 else f"HTTP {code}")
+                break
+            finally:
+                _host_release(ats)
+    except ValueError:
+        # json() on a non-JSON body. The endpoint answered with HTML, which
+        # means this is not a public board of that type.
+        status["error"] = "not a public board (no JSON returned)"
     except httpx.TimeoutException:
         status["error"] = "timed out"
-        jobs = []
     except Exception as e:
         status["error"] = type(e).__name__
-        jobs = []
 
     _CACHE[key] = (time.time() + CACHE_TTL, jobs, status)
     return status, jobs
@@ -497,10 +546,8 @@ async def run_aggregator(client: httpx.AsyncClient, name: str,
         jobs = []
     except httpx.TimeoutException:
         status["error"] = "timed out"
-        jobs = []
     except Exception as e:
         status["error"] = type(e).__name__
-        jobs = []
 
     _CACHE[key] = (time.time() + CACHE_TTL, jobs, status)
     return status, jobs
