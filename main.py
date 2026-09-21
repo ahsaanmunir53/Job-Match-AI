@@ -526,7 +526,7 @@ async def search(payload: dict):
 
         # Score
         if resume_text:
-            unique = matching.score_jobs(resume_text, unique)
+            unique = await asyncio.to_thread(matching.score_jobs, resume_text, unique)
             if min_match:
                 unique = [j for j in unique if (j.get("match_score") or 0) >= min_match]
             unique.sort(key=lambda j: (-(j.get("match_score") or 0),
